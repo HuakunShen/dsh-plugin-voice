@@ -1,0 +1,20 @@
+{
+  "name": "dsh-plugin-voice",
+  "version": "0.2.0",
+  "description": "Voice for the DeepSeek Harness web UI: user-managed speech provider profiles (Xiaomi MiMo, Fish Audio, OpenAI-compatible) with independent provider selection for read-aloud TTS and composer dictation STT.",
+  "license": "MIT",
+  "author": "Huakun Shen <huakun.shen@huakunshen.com>",
+  "type": "module",
+  "files": ["index.js", "client.js", "cordis.patch.yml", "README.md"],
+  "exports": { ".": "./index.js", "./client": "./client.js" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  }
+}
