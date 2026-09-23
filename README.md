@@ -24,6 +24,15 @@ Voice for the [DeepSeek Harness](https://github.com/kernel-machine/deepseek-harn
 Requires a running DeepSeek Harness (web GUI) deployment.
 
 ```sh
+dsh plugin install https://github.com/HuakunShen/dsh-plugin-voice
+```
+
+The Web sidebar's **Plugins** page and the agent's `install_bundle` tool accept the same URL. Restart DSH once so the new module generation loads — after that it auto-loads on every start.
+
+<details>
+<summary>Manual alternative</summary>
+
+```sh
 git clone https://github.com/HuakunShen/dsh-plugin-voice.git ~/Dev/dsh-plugin-voice
 ```
 
@@ -31,7 +40,7 @@ Then in any DeepSeek Harness session, ask the agent:
 
 > Install the bundle at ~/Dev/dsh-plugin-voice into my profile
 
-or have it call the plugin manager's `install_bundle` with that directory. Restart DSH once so the new module generation loads — after that it auto-loads on every start.
+</details>
 
 ## Configure
 
