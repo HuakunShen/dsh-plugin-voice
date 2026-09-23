@@ -1,4 +1,4 @@
-# dsh-plugin-voice
+# @huakunshen/dsh-plugin-voice
 
 Voice for the [DeepSeek Harness](https://github.com/kernel-machine/deepseek-harness) web UI: read assistant messages aloud and dictate into the composer with one mic click — powered by user-managed speech provider profiles.
 
@@ -24,6 +24,8 @@ Voice for the [DeepSeek Harness](https://github.com/kernel-machine/deepseek-harn
 Requires a running DeepSeek Harness (web GUI) deployment.
 
 ```sh
+dsh plugin install @huakunshen/dsh-plugin-voice
+# or straight from this repository:
 dsh plugin install https://github.com/HuakunShen/dsh-plugin-voice
 ```
 
