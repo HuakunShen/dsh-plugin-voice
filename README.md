@@ -6,7 +6,7 @@ Voice for the [DeepSeek Harness](https://github.com/kernel-machine/deepseek-harn
 
 ## Features
 
-- **🎤 Dictation** — a mic control in the composer tool row: click to record, click again to stop, the transcript lands directly in the input (falls back to the clipboard when no editor is found). Audio is converted to 16 kHz mono WAV in the browser before upload.
+- **🎤 Dictation** — click the mic to start recording; the composer tool row expands into `✕ cancel | live level waveform | ■ stop and transcribe` and collapses once the transcript lands in the input (falls back to the clipboard when no editor is found). The waveform follows the microphone's RMS level, so a silent or dead input is visible while recording. Audio is converted to 16 kHz mono WAV in the browser before upload.
 - **🔊 Read aloud** — a speaker action on every finalized assistant message.
 - **🧩 Provider registry** — add any number of provider profiles and mix them freely; dictation and read-aloud can use completely different providers:
 
@@ -56,6 +56,8 @@ Then in any DeepSeek Harness session, ask the agent:
 
 - MiMo TTS is non-streaming (the model returns base64 audio that plays after synthesis); Fish Audio and OpenAI dialects stream while synthesizing.
 - Dictation records via `MediaRecorder` and transcodes to WAV client-side, so any browser-supported recording format works regardless of what the provider accepts.
+- The mic claims `conversation.input.activity` while that seat is free (the expanded, full-width layout) and falls back to the toolbar list `conversation.input.right` when another plugin holds it — the official Voice input bundle registers into the same single-occupant seat.
+- Recognition and read-aloud failures are logged on the Host (in the terminal running `dsh web`) and shown next to the control, not only in its tooltip.
 - Config lives in `~/.dsh/voice.json`; keys live in the DSH credential store (`~/.dsh/.credentials.yaml`). Deleting the JSON re-seeds the default registry.
 
 ## License
