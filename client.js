@@ -88,6 +88,11 @@ window.__ModuleLoader__.load({
         h('path', { d: 'M12.4 3.9 a5.6 5.6 0 0 1 0 8.2', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', fill: 'none' }))
     }
 
+    function CloseIcon() {
+      return h('svg', { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none' },
+        h('path', { d: 'M4.2 4.2 L11.8 11.8 M11.8 4.2 L4.2 11.8', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round' }))
+    }
+
     // ------------------------------------------------------------- audio utils
 
     /** Decode any browser-recorded blob, downmix to mono 16 kHz, and encode 16-bit PCM WAV. */
@@ -150,86 +155,228 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------------ mic button
 
-    function MicButton() {
-      const statusState = React.useState('idle')
-      const status = statusState[0]
-      const setStatus = statusState[1]
-      const tipState = React.useState('')
-      const tip = tipState[0]
-      const setTip = tipState[1]
+    /** Live microphone level history: SVG geometry per frame, no React state churn. */
+    function Waveform(props) {
+      const svgRef = React.useRef(null)
+      const meter = props.meter
+      React.useEffect(function () {
+        const bars = Array.from(svgRef.current.querySelectorAll('line')).reverse().map(function (element) {
+          return { element: element, level: 0 }
+        })
+        let frame
+        let previous = -Infinity
+        const draw = function (now) {
+          if (now - previous >= 50) {
+            previous = now
+            let next = meter !== null && typeof meter.amplitude === 'function' ? meter.amplitude() : 0
+            for (const bar of bars) {
+              const carried = bar.level
+              bar.level = next
+              next = carried
+              const height = 1 + Math.min(1, bar.level * 5) * 17
+              bar.element.setAttribute('y1', String(20 - height))
+              bar.element.setAttribute('y2', String(20 + height))
+            }
+          }
+          frame = requestAnimationFrame(draw)
+        }
+        frame = requestAnimationFrame(draw)
+        return function () { cancelAnimationFrame(frame) }
+      }, [meter])
+      return h('svg', {
+        ref: svgRef,
+        viewBox: '0 0 640 40',
+        preserveAspectRatio: 'none',
+        role: 'img',
+        'aria-label': props.label,
+        style: { flex: 1, minWidth: 0, height: 30, color: 'inherit', opacity: 0.85 },
+      }, Array.from({ length: 80 }, function (_, index) {
+        return h('line', {
+          key: index,
+          x1: index * 8 + 4, x2: index * 8 + 4, y1: 19, y2: 21,
+          stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round',
+          opacity: 0.25 + index / 120,
+        })
+      }))
+    }
+
+    /** Measure live RMS of a capture stream; `close` releases the audio context. */
+    function createMeter(stream) {
+      try {
+        const context = new AudioContext()
+        const analyser = context.createAnalyser()
+        analyser.fftSize = 1024
+        const samples = new Float32Array(analyser.fftSize)
+        context.createMediaStreamSource(stream).connect(analyser)
+        return {
+          amplitude: function () {
+            analyser.getFloatTimeDomainData(samples)
+            let sum = 0
+            for (const sample of samples) sum += sample * sample
+            return Math.sqrt(sum / samples.length)
+          },
+          close: function () { void context.close().catch(function () {}) },
+        }
+      } catch (error) {
+        return { amplitude: function () { return 0 }, close: function () {} }
+      }
+    }
+
+    /**
+     * Composer dictation: a compact mic that expands into the capture row while
+     * a recording is live (cancel, live level waveform, stop-and-transcribe),
+     * then returns to the compact control once the text lands in the draft.
+     */
+    function MicButton(props) {
+      const phaseState = React.useState('idle')
+      const phase = phaseState[0]
+      const setPhase = phaseState[1]
+      const messageState = React.useState('')
+      const message = messageState[0]
+      const setMessage = messageState[1]
       const recorderRef = React.useRef(null)
       const chunksRef = React.useRef([])
-      const timerRef = React.useRef(null)
+      const streamRef = React.useRef(null)
+      const meterRef = React.useRef(null)
+      const expanded = phase !== 'idle'
 
-      const showTip = function (message) {
-        setTip(message)
-        clearTimeout(timerRef.current)
-        timerRef.current = setTimeout(function () { setTip('') }, 4000)
+      // Let the composer owner expand its tool row while this control is active.
+      React.useLayoutEffect(function () {
+        if (typeof props.onActiveChange !== 'function') return undefined
+        props.onActiveChange(expanded)
+        return function () { props.onActiveChange(false) }
+      }, [expanded])
+
+      const release = function () {
+        const meter = meterRef.current
+        meterRef.current = null
+        if (meter !== null) meter.close()
+        const stream = streamRef.current
+        streamRef.current = null
+        if (stream !== null) stream.getTracks().forEach(function (track) { track.stop() })
       }
 
-      const transcribe = async function (blob) {
-        setStatus('transcribing')
+      /** Prefer the composer's own insertion API; fall back to the DOM editor. */
+      const insert = function (text) {
+        const actions = props.inputActions
+        if (actions !== undefined && typeof actions.insertText === 'function') {
+          if (actions.insertText(text, actions.captureInsertion())) return true
+        }
+        return insertIntoComposer(text)
+      }
+
+      const finish = async function () {
+        const recorder = recorderRef.current
+        recorderRef.current = null
+        if (recorder === null) return
+        setPhase('transcribing')
+        const blob = await new Promise(function (resolve) {
+          recorder.onstop = function () {
+            release()
+            resolve(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }))
+          }
+          recorder.stop()
+        })
         try {
           const wavBase64 = await blobToWavBase64(blob)
           const reply = await api('/asr', { wavBase64 })
           if (reply.error) {
-            showTip(`\u26a0 ${reply.error}`)
-          } else if (reply.text && insertIntoComposer(reply.text)) {
-            showTip('已插入识别文字')
+            setMessage(`\u26a0 ${reply.error}`)
+            setPhase('feedback')
+          } else if (reply.text && insert(reply.text)) {
+            setPhase('idle')
           } else {
             await navigator.clipboard.writeText(reply.text || '').catch(function () {})
-            showTip('未找到输入框，文字已复制到剪贴板')
+            setMessage('未找到输入框，文字已复制到剪贴板')
+            setPhase('feedback')
           }
         } catch (error) {
-          showTip(`\u26a0 识别失败：${String(error).slice(0, 160)}`)
+          setMessage(`\u26a0 识别失败：${String(error).slice(0, 160)}`)
+          setPhase('feedback')
         }
-        setStatus('idle')
+      }
+
+      const cancel = function () {
+        const recorder = recorderRef.current
+        recorderRef.current = null
+        if (recorder !== null && recorder.state === 'recording') recorder.stop()
+        chunksRef.current = []
+        release()
+        setMessage('')
+        setPhase('idle')
       }
 
       const start = async function () {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+          setMessage('')
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+            video: false,
+          })
+          streamRef.current = stream
+          meterRef.current = createMeter(stream)
           chunksRef.current = []
           const recorder = new MediaRecorder(stream)
           recorder.ondataavailable = function (event) {
             if (event.data.size > 0) chunksRef.current.push(event.data)
           }
-          recorder.onstop = function () {
-            stream.getTracks().forEach(function (track) { track.stop() })
-            void transcribe(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }))
-          }
           recorder.start()
           recorderRef.current = recorder
-          setStatus('recording')
+          setPhase('recording')
         } catch (error) {
-          showTip(`无法访问麦克风：${String(error).slice(0, 120)}`)
-          setStatus('idle')
+          release()
+          setMessage(`\u26a0 无法访问麦克风：${String(error).slice(0, 120)}`)
+          setPhase('feedback')
         }
       }
 
-      const onClick = function () {
-        if (status === 'recording') {
-          recorderRef.current?.stop()
-          setStatus('transcribing')
-        } else if (status === 'idle') {
-          void start()
-        }
+      const round = {
+        width: 32, height: 32, borderRadius: '50%', border: 'none',
+        background: 'rgba(127,127,127,0.18)', color: 'inherit', cursor: 'pointer',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        padding: 0, flexShrink: 0,
       }
 
-      return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4 } },
+      if (!expanded) {
+        return h('button', {
+          title: '语音输入',
+          'aria-label': '语音输入',
+          onClick: start,
+          style: Object.assign({}, round, { background: 'none', opacity: 0.7 }),
+        }, h(MicIcon, null))
+      }
+
+      return h('div', {
+        'data-voice-activity': phase,
+        style: { display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+      }, [
         h('button', {
-          title: tip || (status === 'recording' ? '停止录音' : '语音输入'),
-          onClick: onClick,
-          disabled: status === 'transcribing',
-          style: {
-            background: status === 'recording' ? 'rgba(229,83,75,0.18)' : 'none',
-            border: 'none', cursor: 'pointer', padding: '2px',
-            display: 'inline-flex', alignItems: 'center',
-            color: status === 'recording' ? '#e5534b' : 'inherit',
-            opacity: status === 'transcribing' ? 0.5 : 0.7,
-          },
-        }, status === 'recording' ? h(StopSquareIcon, null) : h(MicIcon, null)),
-        tip ? h('span', { title: tip, style: tipStyle(tip) }, tip) : null)
+          key: 'cancel', type: 'button', title: '取消录音', 'aria-label': '取消录音',
+          onClick: cancel, style: round,
+        }, h(CloseIcon, null)),
+        phase === 'recording'
+          ? h(Waveform, { key: 'wave', meter: meterRef.current, label: '正在录音' })
+          : h('span', {
+            key: 'status', role: 'status', title: message,
+            style: {
+              flex: 1, minWidth: 0, fontSize: 12, opacity: 0.8,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              color: String(message).startsWith('\u26a0') ? '#e5534b' : 'inherit',
+            },
+          }, phase === 'transcribing' ? '识别中…' : message),
+        phase === 'recording'
+          ? h('button', {
+            key: 'stop', type: 'button', title: '停止并识别', 'aria-label': '停止并识别',
+            onClick: finish, style: round,
+          }, h(StopSquareIcon, null))
+          : null,
+        phase === 'feedback'
+          ? h('button', {
+            key: 'retry', type: 'button', title: '重新录音', 'aria-label': '重新录音',
+            onClick: start, style: round,
+          }, h(MicIcon, null))
+          : null,
+      ])
     }
 
     // -------------------------------------------------------- read-aloud button
@@ -526,8 +673,8 @@ window.__ModuleLoader__.load({
       inject: ['slots'],
       apply(ctx) {
         const slots = ctx.get('slots')
-        slots.inject('conversation.input.right', () => slots.register(
-          { name: 'conversation.input.right', id: 'voice-mic', order: 20 },
+        slots.inject('conversation.input.activity', () => slots.register(
+          { name: 'conversation.input.activity' },
           MicButton,
         ))
         slots.inject('conversation.chat.assistant-actions', () => slots.register(
