@@ -1,6 +1,6 @@
 {
   "name": "@huakunshen/dsh-plugin-voice",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Voice for the DeepSeek Harness web UI: user-managed speech provider profiles (Xiaomi MiMo, Fish Audio, OpenAI-compatible) with independent provider selection for read-aloud TTS and composer dictation STT.",
   "license": "MIT",
   "author": "Huakun Shen <huakun.shen@huakunshen.com>",

@@ -328,9 +328,22 @@ export function apply(ctx) {
           return json(res, 409, { error: `语音输入的 provider「${config.dictation}」不支持识别。` })
         }
         const resolved = await resolveKey(credentials, profile.keyRef)
-        if (resolved === undefined) return json(res, 409, { error: `未配置 key：Settings → Voice 里给「${config.dictation}」填 API key。` })
-        const result = await transcribe(profile, resolved.value, audio)
-        if (result.error !== undefined) return json(res, 502, { error: result.error })
+        if (resolved === undefined) {
+          ctx.logger.warn(`voice: 识别请求缺少 key（${profile.keyRef}）`)
+          return json(res, 409, { error: `未配置 key：Settings → Voice 里给「${config.dictation}」填 API key。` })
+        }
+        let result
+        try {
+          result = await transcribe(profile, resolved.value, audio)
+        } catch (error) {
+          ctx.logger.error(`voice: 识别请求异常 — ${String(error?.stack ?? error)}`)
+          return json(res, 502, { error: `识别请求异常：${String(error?.message ?? error).slice(0, 160)}` })
+        }
+        if (result.error !== undefined) {
+          ctx.logger.warn(`voice: 识别失败（provider=${config.dictation}）— ${result.error}`)
+          return json(res, 502, { error: result.error })
+        }
+        ctx.logger.info(`voice: 识别完成（${result.text.length} 字，provider=${config.dictation}）`)
         return json(res, 200, { text: result.text })
       }
 
@@ -343,9 +356,21 @@ export function apply(ctx) {
           return json(res, 409, { error: `朗读的 provider「${config.readAloud}」不支持合成。` })
         }
         const resolved = await resolveKey(credentials, profile.keyRef)
-        if (resolved === undefined) return json(res, 409, { error: `未配置 key：Settings → Voice 里给「${config.readAloud}」填 API key。` })
-        const result = await synthesize(profile, resolved.value, limited)
-        if (result.error !== undefined) return json(res, 502, { error: result.error })
+        if (resolved === undefined) {
+          ctx.logger.warn(`voice: 朗读请求缺少 key（${profile.keyRef}）`)
+          return json(res, 409, { error: `未配置 key：Settings → Voice 里给「${config.readAloud}」填 API key。` })
+        }
+        let result
+        try {
+          result = await synthesize(profile, resolved.value, limited)
+        } catch (error) {
+          ctx.logger.error(`voice: 合成请求异常 — ${String(error?.stack ?? error)}`)
+          return json(res, 502, { error: `合成请求异常：${String(error?.message ?? error).slice(0, 160)}` })
+        }
+        if (result.error !== undefined) {
+          ctx.logger.warn(`voice: 合成失败（provider=${config.readAloud}）— ${result.error}`)
+          return json(res, 502, { error: result.error })
+        }
         res.statusCode = 200
         res.setHeader('Content-Type', 'audio/mpeg')
         res.setHeader('Cache-Control', 'no-store')

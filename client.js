@@ -16,6 +16,14 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
 
+    const tipStyle = function (text) {
+      return {
+        fontSize: 11, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap', opacity: 0.85,
+        color: String(text).startsWith('\u26a0') ? '#e5534b' : 'inherit',
+      }
+    }
+
     const inputStyle = {
       background: 'var(--dsh-color-bg, rgba(127,127,127,0.15))',
       border: '1px solid rgba(127,127,127,0.35)',
@@ -165,7 +173,7 @@ window.__ModuleLoader__.load({
           const wavBase64 = await blobToWavBase64(blob)
           const reply = await api('/asr', { wavBase64 })
           if (reply.error) {
-            showTip(reply.error)
+            showTip(`\u26a0 ${reply.error}`)
           } else if (reply.text && insertIntoComposer(reply.text)) {
             showTip('已插入识别文字')
           } else {
@@ -173,7 +181,7 @@ window.__ModuleLoader__.load({
             showTip('未找到输入框，文字已复制到剪贴板')
           }
         } catch (error) {
-          showTip(`识别失败：${String(error).slice(0, 160)}`)
+          showTip(`\u26a0 识别失败：${String(error).slice(0, 160)}`)
         }
         setStatus('idle')
       }
@@ -220,7 +228,8 @@ window.__ModuleLoader__.load({
             color: status === 'recording' ? '#e5534b' : 'inherit',
             opacity: status === 'transcribing' ? 0.5 : 0.7,
           },
-        }, status === 'recording' ? h(StopSquareIcon, null) : h(MicIcon, null)))
+        }, status === 'recording' ? h(StopSquareIcon, null) : h(MicIcon, null)),
+        tip ? h('span', { title: tip, style: tipStyle(tip) }, tip) : null)
     }
 
     // -------------------------------------------------------- read-aloud button
@@ -277,6 +286,9 @@ window.__ModuleLoader__.load({
             color: status === 'error' ? '#e5534b' : 'inherit',
           },
         }, label),
+        status === 'error' && error
+          ? h('span', { title: error, style: tipStyle('\u26a0 ' + error) }, `\u26a0 ${error}`)
+          : null,
         status === 'playing' && src
           ? h('audio', { src: src, autoPlay: true, onEnded: stop, onError: onError, style: { display: 'none' } })
           : null)
