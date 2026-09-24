@@ -7,11 +7,11 @@
  * - one "Voice" settings section managing the provider registry: add, edit,
  *   and remove profiles (MiMo / Fish Audio / OpenAI-compatible) and pick
  *   independent providers for dictation and read-aloud.
- * @module dsh-plugin-voice/client
+ * @module @huakunshen/dsh-plugin-voice/client
  */
 
 window.__ModuleLoader__.load({
-  id: 'dsh-plugin-voice/client',
+  id: '@huakunshen/dsh-plugin-voice/client',
   factory(require) {
     const React = require('react')
     const h = React.createElement
@@ -511,9 +511,9 @@ window.__ModuleLoader__.load({
     }
 
     return {
+      inject: ['slots'],
       apply(ctx) {
         const slots = ctx.get('slots')
-        if (slots === undefined) return
         slots.inject('conversation.input.right', () => slots.register(
           { name: 'conversation.input.right', id: 'voice-mic', order: 20 },
           MicButton,
