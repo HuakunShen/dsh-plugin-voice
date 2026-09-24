@@ -189,7 +189,9 @@ window.__ModuleLoader__.load({
         preserveAspectRatio: 'none',
         role: 'img',
         'aria-label': props.label,
-        style: { flex: 1, minWidth: 0, height: 30, color: 'inherit', opacity: 0.85 },
+        style: props.compact
+          ? { width: 168, height: 30, color: 'inherit', opacity: 0.85 }
+          : { flex: 1, minWidth: 0, height: 30, color: 'inherit', opacity: 0.85 },
       }, Array.from({ length: 80 }, function (_, index) {
         return h('line', {
           key: index,
@@ -238,6 +240,8 @@ window.__ModuleLoader__.load({
       const chunksRef = React.useRef([])
       const streamRef = React.useRef(null)
       const meterRef = React.useRef(null)
+      // Only the expandable activity seat hands us onActiveChange.
+      const expandable = typeof props.onActiveChange === 'function'
       const expanded = phase !== 'idle'
 
       // Let the composer owner expand its tool row while this control is active.
@@ -346,16 +350,20 @@ window.__ModuleLoader__.load({
         }, h(MicIcon, null))
       }
 
+      const compact = !expandable
       return h('div', {
         'data-voice-activity': phase,
-        style: { display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+        style: {
+          display: 'flex', alignItems: 'center', gap: 10, minWidth: 0,
+          flex: compact ? 'none' : 1,
+        },
       }, [
         h('button', {
           key: 'cancel', type: 'button', title: '取消录音', 'aria-label': '取消录音',
           onClick: cancel, style: round,
         }, h(CloseIcon, null)),
         phase === 'recording'
-          ? h(Waveform, { key: 'wave', meter: meterRef.current, label: '正在录音' })
+          ? h(Waveform, { key: 'wave', meter: meterRef.current, label: '正在录音', compact: compact })
           : h('span', {
             key: 'status', role: 'status', title: message,
             style: {
@@ -673,10 +681,19 @@ window.__ModuleLoader__.load({
       inject: ['slots'],
       apply(ctx) {
         const slots = ctx.get('slots')
-        slots.inject('conversation.input.activity', () => slots.register(
-          { name: 'conversation.input.activity' },
-          MicButton,
-        ))
+        // conversation.input.activity is single-occupant: the official Voice input
+        // bundle holds it whenever it is installed, so fall back to the toolbar list.
+        slots.inject('conversation.input.activity', () => {
+          try {
+            return slots.register({ name: 'conversation.input.activity' }, MicButton)
+          } catch (error) {
+            console.warn('voice: activity seat unavailable, using the toolbar seat', error)
+            return slots.register(
+              { name: 'conversation.input.right', id: 'voice-mic', order: 20 },
+              MicButton,
+            )
+          }
+        })
         slots.inject('conversation.chat.assistant-actions', () => slots.register(
           { name: 'conversation.chat.assistant-actions', id: 'voice-read-aloud', order: 90 },
           SpeakerButton,
