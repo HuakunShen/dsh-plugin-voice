@@ -1,3 +1,3 @@
 - insert:
     - id: voice
-      name: 'dsh-plugin-voice'
+      name: '@huakunshen/dsh-plugin-voice'
